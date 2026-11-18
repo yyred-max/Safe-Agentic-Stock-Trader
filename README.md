@@ -105,6 +105,27 @@ Incomplete or unverifiable data blocks. Every block returns human-readable reaso
 
 Decisions, policies and receipts are stored in the browser's localStorage, not on a server.
 
+## Build status
+
+Verified on this machine (Node v26, Next.js 16.4.6):
+
+```bash
+npm install   # already installed
+npm test      # 11/11 policy-engine tests pass
+npm run lint  # clean
+npm run build # production build succeeds
+npm run dev   # http://localhost:3000
+```
+
+All four API endpoints respond correctly:
+
+| Endpoint | Purpose | Verified |
+|---|---|---|
+| `POST /api/verify` | Intent → structured action → policy evaluation → Decision | ALLOW + BLOCK both return correct reasons |
+| `POST /api/agent` | Intent → proposed action + field-level provenance | deterministic engine, all fields traced |
+| `POST /api/execute` | Demo-Mode simulated receipt | returns simulated tx hash |
+| `POST /api/execute` (live) | Live execution must be signed in-browser | **403** — server never signs |
+
 ## Known limitations (MVP)
 
 - The structured-action parser is rule-based; ambiguous or heavily paraphrased intents may be
