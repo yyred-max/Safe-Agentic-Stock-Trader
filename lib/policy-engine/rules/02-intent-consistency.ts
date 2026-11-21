@@ -9,9 +9,9 @@ export function checkIntentConsistency(
   const rawText = intent.rawText;
   const lowerText = rawText.toLowerCase();
 
-  // a. Wrong Direction Check
-  const hasBuy = /\b(buy|beli|long)\b/i.test(lowerText);
-  const hasSell = /\b(sell|jual|short)\b/i.test(lowerText);
+  // a. Wrong Direction Check (English, Indonesian)
+  const hasBuy = /\b(buy|beli|membeli|pembelian|long)\b/i.test(lowerText);
+  const hasSell = /\b(sell|jual|menjual|penjualan|short)\b/i.test(lowerText);
 
   if (hasBuy && !hasSell && action.actionType === "SELL") {
     violations.push({
@@ -39,6 +39,8 @@ export function checkIntentConsistency(
       "SHORT",
       "BELI",
       "JUAL",
+      "MEMBELI",
+      "MENJUAL",
       "LIMIT",
       "MARKET",
       "USD",

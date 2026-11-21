@@ -10,9 +10,13 @@
     "test": "node --experimental-strip-types tests/engine.test.ts"
   },
   "dependencies": {
+    "@tanstack/react-query": "^5.108.2",
+    "@wagmi/core": "^3.6.9",
     "next": "16.4.6",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "viem": "^2.58.1",
+    "wagmi": "^3.7.11"
   },
   "devDependencies": {
     "@tailwindcss/turbopack": "4.3.3",

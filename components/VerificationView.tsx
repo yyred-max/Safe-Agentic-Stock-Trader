@@ -3,9 +3,18 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { getDecision, getReceipt, loadDemoMode } from "@/lib/store";
-import { connectWallet, executeInDemo, executeOnBase, getConnectedAccount, hasWallet } from "@/lib/wallet";
-import type { Decision } from "@/lib/types";
+import { erc20Abi, parseUnits, type Address, type Hash } from "viem";
+import {
+  useAccount,
+  useConnect,
+  useSwitchChain,
+  useWaitForTransactionReceipt,
+  useWriteContract,
+} from "wagmi";
+import { baseSepolia } from "wagmi/chains";
+import { getDecision, getReceipt, loadDemoMode, saveReceipt } from "@/lib/store";
+import { executeInDemo } from "@/lib/wallet";
+import type { Decision, ExecutionReceipt } from "@/lib/types";
 
 const RULE_LABELS: { key: string; label: string }[] = [
   { key: "SCHEMA", label: "Schema & sanity" },
@@ -18,14 +27,21 @@ const RULE_LABELS: { key: string; label: string }[] = [
 ];
 
 function intentSignals(rawText: string) {
-  const direction = /\b(sell|jual|short)\b/i.test(rawText) && !/\b(buy|beli|long)\b/i.test(rawText) ? "SELL" : "BUY";
+  const direction =
+    /\b(sell|jual|menjual|penjualan|short)\b/i.test(rawText) &&
+    !/\b(buy|beli|membeli|pembelian|long)\b/i.test(rawText)
+      ? "SELL"
+      : "BUY";
   const tickers = (rawText.match(/\b[A-Z]{2,5}\b/g) ?? []).filter(
-    (t) => !["USD", "LIMIT", "MARKET", "MAX", "LOSS", "BUY", "SELL"].includes(t)
+    (t) => !["USD", "LIMIT", "MARKET", "MAX", "LOSS", "BUY", "SELL", "BELI", "JUAL"].includes(t)
   );
   const cleaned = rawText
     .replace(/(?:under|below|limit)\s*\$?\s*\d+(?:\.\d+)?/gi, "")
     .replace(/(?:max\s*loss|stop\s*loss|risk)\s*\$?\s*\d+(?:\.\d+)?/gi, "");
-  const amount = cleaned.match(/\$\s*(\d+(?:\.\d+)?)/)?.[1] ?? cleaned.match(/\b(\d+(?:\.\d+)?)\s*(?:usd|dollars?)/i)?.[1] ?? "—";
+  const amount =
+    cleaned.match(/\$\s*(\d+(?:\.\d+)?)/)?.[1] ??
+    cleaned.match(/\b(\d+(?:\.\d+)?)\s*(?:usd|dollars?)/i)?.[1] ??
+    "—";
   const limit = rawText.match(/(?:under|below|at|limit)\s*\$?\s*(\d+(?:\.\d+)?)/i)?.[1] ?? "—";
   const maxLoss = rawText.match(/(?:max\s*loss|stop\s*loss|risk)\s*\$?\s*(\d+(?:\.\d+)?)/i)?.[1] ?? "—";
   return { direction, ticker: tickers[0] ?? "—", amount, limit, maxLoss };
@@ -36,43 +52,106 @@ export default function VerificationView({ decisionId }: { decisionId: string })
   const [decision, setDecision] = useState<Decision | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [demoMode, setDemoMode] = useState(false);
-  const [account, setAccount] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
-  const [executing, setExecuting] = useState(false);
-  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [executionError, setExecutionError] = useState("");
+  const [txHash, setTxHash] = useState<Hash | null>(null);
+
+  // Wagmi hooks
+  const { address, isConnected, chainId } = useAccount();
+  const { connectAsync, connectors } = useConnect();
+  const { switchChainAsync } = useSwitchChain();
+  const {
+    writeContractAsync,
+    isPending: isWritePending,
+    error: writeError,
+  } = useWriteContract();
+
+  const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
+    hash: txHash ?? undefined,
+  });
 
   useEffect(() => {
     const found = getDecision(decisionId);
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setDecision(found ?? null);
     setDemoMode(loadDemoMode());
     setLoaded(true);
-    void getConnectedAccount().then(setAccount);
-    if (found && getReceipt(decisionId)) router.replace(`/execution/${decisionId}`);
-  }, [decisionId, router]);
 
-  async function execute() {
+    const existingReceipt = getReceipt(decisionId);
+    if (existingReceipt) {
+      setTxHash(existingReceipt.txHash as Hash);
+    }
+  }, [decisionId]);
+
+  async function handleExecute() {
     if (!decision) return;
-    setExecuting(true);
-    setError("");
+    setSubmitting(true);
+    setExecutionError("");
+
     try {
-      let wallet = account;
-      if (!demoMode && !wallet) {
-        if (!hasWallet()) throw new Error("No browser wallet detected. Enable Demo Mode or install a Base-compatible wallet.");
-        wallet = await connectWallet();
-        setAccount(wallet);
+      if (demoMode) {
+        // Demo Mode (simulated)
+        const receipt = executeInDemo(decision.decisionId, baseSepolia.id);
+        saveReceipt(receipt);
+        setTxHash(receipt.txHash as Hash);
+        return;
       }
 
-      const receipt = demoMode
-        ? executeInDemo(decision.decisionId)
-        : await executeOnBase(decision.decisionId, wallet as string, decision.action.amountUSD);
+      // Live Execution with Wagmi & ERC-20 transfer
+      let userAddress = address;
 
-      const { saveReceipt } = await import("@/lib/store");
+      // Ensure wallet is connected
+      if (!isConnected || !userAddress) {
+        const connector = connectors[0];
+        if (!connector) {
+          throw new Error("No wallet connector found. Please install MetaMask or another Web3 wallet.");
+        }
+        const res = await connectAsync({ connector });
+        userAddress = res.accounts[0];
+      }
+
+      if (!userAddress) {
+        throw new Error("No wallet address available.");
+      }
+
+      // Ensure Base Sepolia network (Chain ID: 84532)
+      if (chainId !== baseSepolia.id && switchChainAsync) {
+        await switchChainAsync({ chainId: baseSepolia.id });
+      }
+
+      const tokenAddress = (process.env.NEXT_PUBLIC_TOKENIZED_STOCK_ADDRESS ||
+        "0xd350E6acd5d558ADA0dc16f0eec0C6f333F1c604") as Address;
+
+      // 18 decimals -> nominal amountUSD * 10^18
+      const amountWei = parseUnits(decision.action.amountUSD.toString(), 18);
+
+      // Call transfer(to, amount) on ERC-20 token
+      const hash = await writeContractAsync({
+        address: tokenAddress,
+        abi: erc20Abi,
+        functionName: "transfer",
+        args: [userAddress, amountWei],
+        chainId: baseSepolia.id,
+      });
+
+      setTxHash(hash);
+
+      const receipt: ExecutionReceipt = {
+        decisionId: decision.decisionId,
+        txHash: hash,
+        chainId: baseSepolia.id,
+        chainName: "Base Sepolia",
+        explorerUrl: `https://sepolia.basescan.org/tx/${hash}`,
+        mode: "live",
+        simulated: false,
+        createdAt: new Date().toISOString(),
+      };
       saveReceipt(receipt);
-      router.push(`/execution/${decision.decisionId}`);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Execution failed.");
-      setExecuting(false);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Execution failed.";
+      setExecutionError(message);
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -89,6 +168,7 @@ export default function VerificationView({ decisionId }: { decisionId: string })
   const signals = intentSignals(decision.intent.rawText);
   const failedRules = new Set(decision.policyViolations);
   const isAllowed = decision.status === "ALLOW";
+  const isBusy = submitting || isWritePending || isConfirming;
 
   return (
     <div className="container" style={{ paddingTop: 34 }}>
@@ -226,35 +306,110 @@ export default function VerificationView({ decisionId }: { decisionId: string })
       {isAllowed && (
         <section className="card">
           <h2>User confirmation gate</h2>
-          {!confirming ? (
+
+          {txHash ? (
+            <div style={{ marginTop: 6 }}>
+              <div className="notice" style={{ borderLeftColor: "var(--green)", background: "var(--green-bg)" }}>
+                <div className="row" style={{ marginBottom: 8 }}>
+                  <span className="badge badge-allow">
+                    {demoMode ? "SIMULATED" : isConfirmed ? "CONFIRMED ON-CHAIN" : "SUBMITTED"}
+                  </span>
+                  <span className="badge">Base Sepolia</span>
+                </div>
+                <p style={{ margin: "4px 0", color: "var(--foreground)", fontWeight: 600 }}>
+                  {demoMode
+                    ? "Simulated transaction created successfully:"
+                    : isConfirmed
+                    ? "Transaction confirmed successfully on Base Sepolia!"
+                    : "Transaction submitted to mempool (waiting for block confirmation):"}
+                </p>
+                <div style={{ margin: "8px 0" }}>
+                  <span className="muted small">Transaction Hash: </span>
+                  <code className="mono hash" style={{ color: "var(--foreground)" }}>
+                    {txHash}
+                  </code>
+                </div>
+                <div className="row" style={{ marginTop: 14 }}>
+                  <a
+                    className="btn-primary"
+                    href={`https://sepolia.basescan.org/tx/${txHash}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    View on BaseScan ↗
+                  </a>
+                  <button
+                    className="btn-ghost"
+                    onClick={() => router.push(`/execution/${decision.decisionId}`)}
+                  >
+                    View Full Execution Receipt →
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : !confirming ? (
             <div className="row">
               <p className="muted small" style={{ flex: 1, margin: 0 }}>
                 An ALLOW decision is not an execution. You must explicitly confirm the exact action above.
               </p>
-              <button className="btn-primary" onClick={() => setConfirming(true)}>Confirm &amp; Execute</button>
+              <button className="btn-primary" onClick={() => setConfirming(true)}>
+                Confirm &amp; Execute
+              </button>
             </div>
           ) : (
             <div>
               <div className="notice">
-                You are about to execute {decision.action.actionType} ${decision.action.amountUSD} of{" "}
-                {decision.action.ticker} on {demoMode ? "Demo Mode (simulated)" : "Base"}.
-                <br />Decision ID: <span className="mono">{decision.decisionId}</span>
+                You are about to execute <strong>{decision.action.actionType} ${decision.action.amountUSD}</strong> of{" "}
+                <strong>{decision.action.ticker}</strong> on {demoMode ? "Demo Mode (simulated)" : "Base Sepolia"}.
+                <br />
+                Token Contract:{" "}
+                <span className="mono">
+                  {process.env.NEXT_PUBLIC_TOKENIZED_STOCK_ADDRESS || "0xd350E6acd5d558ADA0dc16f0eec0C6f333F1c604"}
+                </span>
+                <br />
+                Decision ID: <span className="mono">{decision.decisionId}</span>
               </div>
+
               <div className="row" style={{ marginTop: 14 }}>
-                <button className="btn-success" onClick={() => void execute()} disabled={executing}>
-                  {executing ? "Submitting…" : demoMode ? "Yes — simulate execution" : "Yes — sign in wallet"}
+                <button
+                  className="btn-success"
+                  onClick={() => void handleExecute()}
+                  disabled={isBusy}
+                >
+                  {isWritePending
+                    ? "Check wallet (Signing…)"
+                    : isConfirming
+                    ? "Confirming on Base Sepolia…"
+                    : submitting
+                    ? "Preparing…"
+                    : demoMode
+                    ? "Yes — simulate execution"
+                    : "Yes — execute via wagmi"}
                 </button>
-                <button className="btn-ghost" onClick={() => setConfirming(false)} disabled={executing}>Cancel</button>
-                {!demoMode && account && <span className="muted small mono">{account}</span>}
-                {!demoMode && !hasWallet() && <span className="muted small">No wallet detected</span>}
+                <button
+                  className="btn-ghost"
+                  onClick={() => setConfirming(false)}
+                  disabled={isBusy}
+                >
+                  Cancel
+                </button>
+                {!demoMode && address && <span className="muted small mono">{address}</span>}
+                {!demoMode && !isConnected && <span className="muted small">Wallet will prompt to connect</span>}
               </div>
-              {error && <div className="error-box">{error}</div>}
+
+              {(executionError || writeError) && (
+                <div className="error-box">
+                  {executionError || writeError?.message}
+                </div>
+              )}
             </div>
           )}
         </section>
       )}
 
-      <p className="small"><Link href="/">← New intent</Link></p>
+      <p className="small" style={{ marginTop: 24 }}>
+        <Link href="/">← New intent</Link>
+      </p>
     </div>
   );
 }

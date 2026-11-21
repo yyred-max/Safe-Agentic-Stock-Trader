@@ -40,12 +40,14 @@ export function generateAction(
 function parseIntent(rawText: string): AgentOutput {
   const lower = rawText.toLowerCase();
 
-  const buyWords = /\b(buy|beli|long|go long|add)\b/i.test(rawText);
-  const sellWords = /\b(sell|jual|short|go short|reduce)\b/i.test(rawText);
+  // Multi-language direction detection (English, Indonesian)
+  const buyWords = /\b(buy|beli|membeli|pembelian|long|go long|add)\b/i.test(rawText);
+  const sellWords = /\b(sell|jual|menjual|penjualan|short|go short|reduce)\b/i.test(rawText);
+  const hasExplicitDirection = buyWords || sellWords;
   const actionType: StructuredAction["actionType"] = sellWords && !buyWords ? "SELL" : "BUY";
 
   const explicitTickers = (rawText.match(/\b[A-Z]{2,5}\b/g) ?? []).filter(
-    (token) => !["USD", "LIMIT", "MARKET", "MAX", "LOSS", "BUY", "SELL"].includes(token)
+    (token) => !["USD", "LIMIT", "MARKET", "MAX", "LOSS", "BUY", "SELL", "BELI", "JUAL"].includes(token)
   );
   const known = explicitTickers.find((t) => (KNOWN_TICKERS as readonly string[]).includes(t));
   const ticker = (known ?? explicitTickers[0] ?? "").toUpperCase();
@@ -70,7 +72,7 @@ function parseIntent(rawText: string): AgentOutput {
     .replace(/(?:max\s*loss|stop\s*loss|lose\s*no\s*more\s*than|risk)\s*\$?\s*\d+(?:\.\d+)?/gi, "");
 
   const buyAmountMatch = amountText.match(
-    /\b(?:buy|sell|beli|jual|long|short|add|reduce)\b[^0-9$]*\$\s*(\d+(?:\.\d+)?)|\$\s*(\d+(?:\.\d+)?)/i
+    /\b(?:buy|sell|beli|membeli|pembelian|jual|menjual|penjualan|long|short|add|reduce)\b[^0-9$]*\$\s*(\d+(?:\.\d+)?)|\$\s*(\d+(?:\.\d+)?)/i
   );
   if (buyAmountMatch) {
     const value = buyAmountMatch[1] ?? buyAmountMatch[2];
@@ -108,7 +110,10 @@ function parseIntent(rawText: string): AgentOutput {
   };
 
   const provenance: Record<string, ProvenanceField> = {
-    actionType: prov(buyWords || sellWords ? "explicit direction word in intent" : "inferred (no direction word)", buyWords || sellWords ? "high" : "low"),
+    actionType: prov(
+      hasExplicitDirection ? "explicit direction word in intent" : "inferred (no direction word)",
+      hasExplicitDirection ? "high" : "low"
+    ),
     ticker: prov(ticker ? `ticker token "${ticker}" in intent` : "not found in intent", ticker ? "high" : "low"),
     amountUSD: prov(amountSource, amountConfidence),
     orderType: prov(orderType === "LIMIT" ? "conditional price phrase in intent" : "no conditional price in intent", orderType === "LIMIT" ? "high" : "medium"),

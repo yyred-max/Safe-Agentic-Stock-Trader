@@ -87,3 +87,19 @@ test("decision IDs are unique", () => {
   const ids = new Set(Array.from({ length: 50 }, () => decide().decisionId));
   assert.equal(ids.size, 50);
 });
+
+test("indonesian intent with explicit direction word gets high provenance and ALLOWs", () => {
+  const d = decide("membeli coin NVDA $30");
+  assert.equal(d.action.actionType, "BUY");
+  assert.equal(d.provenance.actionType.confidence, "high");
+  assert.equal(d.provenance.actionType.source, "explicit direction word in intent");
+  assert.equal(d.status, "ALLOW");
+});
+
+test("intent without explicit direction gets low provenance and fails closed", () => {
+  const d = decide("coin NVDA $30");
+  assert.equal(d.provenance.actionType.confidence, "low");
+  assert.equal(d.status, "BLOCK");
+  assert.ok(d.policyViolations.includes("PROVENANCE_LOW"));
+});
+

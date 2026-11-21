@@ -3,12 +3,15 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useAccount } from "wagmi";
 import { DEMO_SCENARIOS, EXAMPLE_PROMPTS } from "@/lib/demo-mode/scenarios";
 import { loadDecisions, loadDemoMode, loadPolicy, saveDecision, saveDemoMode } from "@/lib/store";
 import type { Decision, DemoScenario, Policy } from "@/lib/types";
 
 export default function HomeView() {
   const router = useRouter();
+  const { address, isConnected } = useAccount();
+
   const [rawText, setRawText] = useState(EXAMPLE_PROMPTS[0] ?? "");
   const [demoMode, setDemoModeState] = useState(false);
   const [policy, setPolicy] = useState<Policy | null>(null);
@@ -17,12 +20,41 @@ export default function HomeView() {
   const [error, setError] = useState("");
   const [recent, setRecent] = useState<Decision[]>([]);
 
+  // Faucet state
+  const [claimingFaucet, setClaimingFaucet] = useState(false);
+  const [faucetMessage, setFaucetMessage] = useState("");
+  const [faucetError, setFaucetError] = useState("");
+
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setDemoModeState(loadDemoMode());
     setPolicy(loadPolicy());
     setRecent(loadDecisions().slice(0, 5));
   }, []);
+
+  async function handleClaimFaucet() {
+    if (!address) return;
+    setClaimingFaucet(true);
+    setFaucetMessage("");
+    setFaucetError("");
+
+    try {
+      const res = await fetch("/api/faucet", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userAddress: address }),
+      });
+      const data = (await res.json()) as { success?: boolean; message?: string; error?: string };
+      if (!res.ok || !data.success) {
+        throw new Error(data.error ?? "Gagal mengklaim faucet.");
+      }
+      setFaucetMessage(data.message ?? "Berhasil! 100 mNVDA & Gas terkirim ke wallet Anda.");
+    } catch (err: unknown) {
+      setFaucetError(err instanceof Error ? err.message : "Terjadi kesalahan saat klaim faucet.");
+    } finally {
+      setClaimingFaucet(false);
+    }
+  }
 
   async function runVerify(text: string, scenarioToRun: DemoScenario, forceDemo = false) {
     if (!text.trim()) {
@@ -84,11 +116,58 @@ export default function HomeView() {
         <span className="badge">BASE EXECUTION</span>
       </div>
 
+      {isConnected && (
+        <section
+          className="card card-tight"
+          style={{
+            borderLeft: "3px solid var(--accent)",
+            background: "rgba(96,165,250,0.08)",
+            marginBottom: 20,
+          }}
+        >
+          <div className="row" style={{ justifyContent: "space-between" }}>
+            <div>
+              <strong style={{ fontSize: 15 }}>1-Click Testnet Setup for Judges</strong>
+              <p className="muted small" style={{ margin: "3px 0 0" }}>
+                Claim 100 mNVDA mock tokenized stocks + 0.0001 Base Sepolia ETH for gas directly to your connected wallet.
+              </p>
+            </div>
+            <button
+              className="btn-primary btn-sm"
+              onClick={() => void handleClaimFaucet()}
+              disabled={claimingFaucet}
+            >
+              {claimingFaucet ? "Claiming..." : "Claim Testnet Tokens (mNVDA + Gas)"}
+            </button>
+          </div>
+
+          {faucetMessage && (
+            <div
+              className="notice"
+              style={{
+                marginTop: 12,
+                borderLeftColor: "var(--green)",
+                background: "var(--green-bg)",
+                color: "var(--foreground)",
+              }}
+            >
+              ✓ {faucetMessage}
+            </div>
+          )}
+
+          {faucetError && (
+            <div className="error-box" style={{ marginTop: 12 }}>
+              {faucetError}
+            </div>
+          )}
+        </section>
+      )}
+
       <div className="grid-2">
         <section className="card">
           <h2>1 · Express your intent</h2>
           <p className="muted small" style={{ marginTop: -6 }}>
-            Natural language, English. Amount, ticker and direction must be explicit.
+            Natural language, English or Indonesian. Amount, ticker and direction must be explicit.
           </p>
           <textarea
             aria-label="Trading intent"
