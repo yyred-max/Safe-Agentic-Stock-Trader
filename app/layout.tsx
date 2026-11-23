@@ -1,8 +1,16 @@
+import "./globals.css";
 import type { Metadata } from "next";
+import { Inter } from "next/font/google";
 import { Suspense, type ReactNode } from "react";
 import Nav from "@/components/Nav";
+import SmoothScroll from "@/providers/SmoothScroll";
 import { WagmiProviders } from "@/providers/WagmiProviders";
-import "./globals.css";
+
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "Safe Agentic Stock Trader",
@@ -11,17 +19,15 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" className="h-full antialiased">
-      <body className="min-h-full flex flex-col font-sans">
+    <html lang="en" className={`${inter.variable} h-full antialiased`}>
+      <body className="min-h-full flex flex-col bg-[#08090a] text-zinc-300">
         <WagmiProviders>
           <Suspense fallback={<div className="topbar" style={{ height: 58 }} />}>
             <Nav />
           </Suspense>
-          <main className="flex-1">{children}</main>
-          <footer className="footer" style={{ textAlign: "center", padding: "18px 20px" }}>
-            Safe Agentic Stock Trader — the agent proposes, the system decides, the user confirms.
-            {" "}MVP demo. Verification is off-chain; execution is signed by your wallet.
-          </footer>
+          <SmoothScroll>
+            <main className="flex-1 pt-20">{children}</main>
+          </SmoothScroll>
         </WagmiProviders>
       </body>
     </html>

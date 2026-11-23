@@ -59,7 +59,13 @@ export async function POST(request: NextRequest) {
     createdAt: new Date().toISOString(),
   };
 
-  const decision: Decision = evaluate(intent, agentOutput.action, policy, agentOutput.provenance);
+  const decision: Decision = evaluate(
+    intent,
+    agentOutput.action,
+    policy,
+    agentOutput.provenance,
+    agentOutput.paraphrasedIntent
+  );
 
   return Response.json({ decision, engine: agentOutput.engine, scenario, policy });
 }

@@ -1,8 +1,6 @@
 import { Suspense } from "react";
 import ExecutionView from "@/components/ExecutionView";
 
-export const instant = false;
-
 export default async function ExecutionPage({
   params,
 }: {

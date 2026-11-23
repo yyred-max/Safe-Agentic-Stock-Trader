@@ -13,7 +13,8 @@ export function evaluate(
   intent: Intent,
   action: StructuredAction,
   policy: Policy,
-  provenance: Record<string, ProvenanceField> = {}
+  provenance: Record<string, ProvenanceField> = {},
+  paraphrasedIntent = ""
 ): Decision {
   const violations: Violation[] = [];
 
@@ -45,6 +46,7 @@ export function evaluate(
     provenance,
     intent,
     action,
+    paraphrasedIntent,
     createdAt: new Date().toISOString(),
   };
 }

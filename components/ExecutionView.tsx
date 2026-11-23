@@ -17,57 +17,100 @@ export default function ExecutionView({ decisionId }: { decisionId: string }) {
     setLoaded(true);
   }, [decisionId]);
 
-  if (!loaded) return <div className="container" style={{ paddingTop: 40 }}>Loading execution…</div>;
+  if (!loaded) return <div className="container pt-6 text-zinc-400">Loading execution receipt…</div>;
   if (!receipt) {
     return (
-      <div className="container" style={{ paddingTop: 40 }}>
-        <h1>No execution receipt</h1>
-        <p className="muted">This Decision ID has no execution in this browser.</p>
-        <p><Link href="/">← New intent</Link></p>
+      <div className="container pt-8 pb-16">
+        <h1 className="text-2xl font-bold text-zinc-100">No execution receipt</h1>
+        <p className="text-zinc-400 mt-2">This Decision ID has no execution record in this browser.</p>
+        <p className="mt-4"><Link href="/" className="text-[#828fff] underline">← Back to intent</Link></p>
       </div>
     );
   }
 
   return (
-    <div className="container" style={{ paddingTop: 40 }}>
-      <div className="eyebrow">Execution</div>
-      <h1>Transaction submitted</h1>
-      <p className="subtitle">
-        The confirmed action was submitted after an ALLOW decision and your explicit confirmation.
-      </p>
+    <div className="container pt-8 pb-16">
+      <div className="mb-8">
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-[11px] font-medium tracking-[0.08em] uppercase text-zinc-400 bg-white/[0.03] border border-white/10 mb-5">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+          On-Chain Settlement
+        </div>
+        <h1 className="text-4xl sm:text-[2.5rem] font-medium tracking-tight text-zinc-100 max-w-3xl leading-[1.12]">
+          Transaction submitted
+        </h1>
+        <p className="text-zinc-400 text-[15px] leading-relaxed max-w-2xl mt-4">
+          The confirmed action was submitted after an explicit ALLOW decision and your signed authorization.
+        </p>
+      </div>
 
-      <section className="card">
-        <div className="row" style={{ marginBottom: 16 }}>
+      <section className="gradient-border-card is-allow p-6 sm:p-7 mb-8 overflow-hidden">
+        <div className="flex flex-wrap items-center gap-2 mb-6">
           <span className="badge badge-allow">CONFIRMED</span>
           <span className={`badge ${receipt.simulated ? "badge-accent" : "badge-allow"}`}>
             {receipt.simulated ? "SIMULATED · DEMO MODE" : "LIVE TRANSACTION"}
           </span>
           <span className="badge">{receipt.chainName}</span>
         </div>
-        <table>
-          <tbody>
-            <tr><td>Transaction hash</td><td className="mono hash">{receipt.txHash}</td></tr>
-            <tr><td>Decision ID</td><td className="mono hash">{receipt.decisionId}</td></tr>
-            <tr><td>Chain ID</td><td className="mono">{receipt.chainId}</td></tr>
-            <tr><td>Mode</td><td className="mono">{receipt.mode}</td></tr>
-            <tr><td>Submitted</td><td className="muted small">{new Date(receipt.createdAt).toLocaleString()}</td></tr>
-          </tbody>
-        </table>
-        <div className="row" style={{ marginTop: 18 }}>
-          <a className="btn-primary" href={receipt.explorerUrl} target="_blank" rel="noopener noreferrer">
-            View on explorer
-          </a>
-          {decision && <Link href={`/verification/${decision.decisionId}`}>Back to verification →</Link>}
+
+        <div className="rounded-xl border border-white/5 overflow-hidden mb-6">
+          <table className="w-full">
+            <tbody>
+              <tr className="border-b border-white/5">
+                <td className="text-xs text-zinc-400 py-4 px-5 sm:w-48">Transaction Hash</td>
+                <td className="text-xs font-mono text-emerald-400 py-4 px-5 break-all">{receipt.txHash}</td>
+              </tr>
+              <tr className="border-b border-white/5">
+                <td className="text-xs text-zinc-400 py-4 px-5">Decision ID</td>
+                <td className="text-xs font-mono text-zinc-200 py-4 px-5 break-all">{receipt.decisionId}</td>
+              </tr>
+              <tr className="border-b border-white/5">
+                <td className="text-xs text-zinc-400 py-4 px-5">Chain ID</td>
+                <td className="text-xs font-mono text-zinc-200 py-4 px-5">{receipt.chainId}</td>
+              </tr>
+              <tr className="border-b border-white/5">
+                <td className="text-xs text-zinc-400 py-4 px-5">Execution Mode</td>
+                <td className="text-xs font-mono text-zinc-200 py-4 px-5 uppercase">{receipt.mode}</td>
+              </tr>
+              <tr>
+                <td className="text-xs text-zinc-400 py-4 px-5">Submitted At</td>
+                <td className="text-xs text-zinc-300 py-4 px-5">{new Date(receipt.createdAt).toLocaleString()}</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <a
+            className="btn-primary text-xs px-5 py-2.5 font-semibold"
+            href={receipt.explorerUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            View on Explorer ↗
+          </a>
+          {decision && (
+            <Link
+              href={`/verification/${decision.decisionId}`}
+              className="text-xs text-[#828fff] hover:text-white px-3 py-2 transition-colors"
+            >
+              Back to verification review →
+            </Link>
+          )}
+        </div>
+
         {receipt.simulated && (
-          <div className="notice" style={{ marginTop: 18 }}>
-            Demo Mode produced a simulated hash for presentation only. No on-chain state changed.
-            Switch off Demo Mode, connect a wallet, and configure a tokenized-stock token to execute live.
+          <div className="notice text-xs rounded-xl mt-5">
+            Demo Mode produced a simulated transaction hash for presentation. No on-chain balance changed.
+            Switch off Demo Mode and connect a wallet on Base Sepolia for live token execution.
           </div>
         )}
       </section>
 
-      <p className="small"><Link href="/">← New intent</Link></p>
+      <p className="text-xs text-zinc-500 mt-6">
+        <Link href="/" className="text-[#828fff] hover:underline flex items-center gap-1">
+          ← Back to new intent
+        </Link>
+      </p>
     </div>
   );
 }

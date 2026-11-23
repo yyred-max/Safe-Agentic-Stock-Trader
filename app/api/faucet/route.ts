@@ -43,12 +43,6 @@ export async function POST(request: NextRequest) {
     const faucetAccount = privateKeyToAccount(formattedKey);
     const rpcUrl = "https://sepolia.base.org";
 
-    const walletClient = createWalletClient({
-      account: faucetAccount,
-      chain: baseSepolia,
-      transport: http(rpcUrl),
-    });
-
     const publicClient = createPublicClient({
       chain: baseSepolia,
       transport: http(rpcUrl),
@@ -56,6 +50,31 @@ export async function POST(request: NextRequest) {
 
     const tokenAddress = (process.env.NEXT_PUBLIC_TOKENIZED_STOCK_ADDRESS ||
       "0xd350E6acd5d558ADA0dc16f0eec0C6f333F1c604") as Address;
+
+    // Rate limiting: Check if user already holds >= 100 mNVDA
+    const userBalance = await publicClient.readContract({
+      address: tokenAddress,
+      abi: erc20Abi,
+      functionName: "balanceOf",
+      args: [userAddress as Address],
+    });
+
+    const threshold = parseUnits("100", 18);
+    if (userBalance >= threshold) {
+      return Response.json(
+        {
+          error:
+            "Wallet ini sudah pernah melakukan klaim. Saldo mNVDA Anda sudah mencukupi untuk demo.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const walletClient = createWalletClient({
+      account: faucetAccount,
+      chain: baseSepolia,
+      transport: http(rpcUrl),
+    });
 
     // 1. Send 0.0001 ETH for gas
     const ethTxHash = await walletClient.sendTransaction({

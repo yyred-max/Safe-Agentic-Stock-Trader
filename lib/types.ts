@@ -18,6 +18,7 @@ export interface StructuredAction {
   limitPrice?: number;
   maxLoss?: number;
   reasoning: string;
+  paraphrasedIntent?: string;
 }
 
 export interface Policy {
@@ -40,6 +41,7 @@ export interface Decision {
   provenance: Record<string, ProvenanceField>;
   intent: Intent;
   action: StructuredAction;
+  paraphrasedIntent: string;
   createdAt: string;
 }
 
@@ -67,4 +69,5 @@ export interface AgentOutput {
   action: StructuredAction;
   provenance: Record<string, ProvenanceField>;
   engine: "deterministic" | "llm";
+  paraphrasedIntent: string;
 }

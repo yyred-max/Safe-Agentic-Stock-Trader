@@ -1,8 +1,6 @@
 import { Suspense } from "react";
 import VerificationView from "@/components/VerificationView";
 
-export const instant = false;
-
 export default async function VerificationPage({
   params,
 }: {

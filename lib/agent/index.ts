@@ -34,7 +34,12 @@ export function generateAction(
     provenance = { ...provenance, ...malicious.provenance };
   }
 
-  return { action, provenance, engine: "deterministic" };
+  return {
+    action,
+    provenance,
+    engine: "deterministic",
+    paraphrasedIntent: buildParaphrasedIntent(rawText, action),
+  };
 }
 
 function parseIntent(rawText: string): AgentOutput {
@@ -108,6 +113,7 @@ function parseIntent(rawText: string): AgentOutput {
     ...(maxLoss != null ? { maxLoss } : {}),
     reasoning: reasoningParts.join(" "),
   };
+  action.paraphrasedIntent = buildParaphrasedIntent(rawText, action);
 
   const provenance: Record<string, ProvenanceField> = {
     actionType: prov(
@@ -125,7 +131,12 @@ function parseIntent(rawText: string): AgentOutput {
   // Keep parser coverage visible for the UI (unused lower variable intentionally referenced).
   void lower;
 
-  return { action, provenance, engine: "deterministic" };
+  return {
+    action,
+    provenance,
+    engine: "deterministic",
+    paraphrasedIntent: buildParaphrasedIntent(rawText, action),
+  };
 }
 
 /** Simulated malicious / erroneous agent output for the BLOCK demo scenarios. */
@@ -161,6 +172,7 @@ function maliciousVariant(
   }
 
   action.reasoning = `SIMULATED MALICIOUS OUTPUT (${scenario}): ` + action.reasoning;
+  action.paraphrasedIntent = buildParaphrasedIntent("", action);
   return { action, provenance };
 }
 
@@ -169,6 +181,21 @@ function maliciousVariant(
  * AGENT_LLM_BASE_URL / AGENT_LLM_MODEL). Any failure falls back to the
  * deterministic parser so the safety demo never depends on network access.
  */
+function buildParaphrasedIntent(rawText: string, action: StructuredAction): string {
+  const direction = action.actionType === "BUY" ? "buy" : "sell";
+  const amount = `$${action.amountUSD}`;
+  const ticker = action.ticker ? ` of ${action.ticker}` : "";
+  const limitClause =
+    action.orderType === "LIMIT" && typeof action.limitPrice === "number"
+      ? ` only if the price is ${action.actionType === "BUY" ? "below" : "above"} $${action.limitPrice}`
+      : "";
+  const maxLossClause =
+    typeof action.maxLoss === "number"
+      ? `, with a maximum loss of $${action.maxLoss}`
+      : "";
+  return `You want to ${direction} ${amount}${ticker}${limitClause}${maxLossClause}.`;
+}
+
 export async function generateActionWithOptionalLLM(
   rawText: string,
   scenario: DemoScenario = "real"
@@ -194,7 +221,7 @@ export async function generateActionWithOptionalLLM(
           {
             role: "system",
             content:
-              "Convert the trading intent into JSON with keys: actionType (BUY|SELL), ticker, amountUSD, orderType (MARKET|LIMIT), limitPrice, maxLoss, reasoning. Never invent values not present in the intent. If a value is absent, omit it.",
+              "Convert the trading intent into JSON with keys: actionType (BUY|SELL), ticker, amountUSD, orderType (MARKET|LIMIT), limitPrice, maxLoss, paraphrasedIntent, reasoning. paraphrasedIntent must be a clear sentence restating the user's intent, e.g. \"User intends to purchase $30 of NVDA stock, with a limit price of $140, and a maximum accepted loss of $8.\" Never invent values not present in the intent. If a value is absent, omit it.",
           },
           { role: "user", content: rawText },
         ],
@@ -227,6 +254,11 @@ export async function generateActionWithOptionalLLM(
       ...(typeof candidate.maxLoss === "number" ? { maxLoss: candidate.maxLoss } : {}),
       reasoning: typeof candidate.reasoning === "string" ? candidate.reasoning : "LLM-generated action",
     };
+    action.paraphrasedIntent =
+      typeof candidate.paraphrasedIntent === "string" &&
+      candidate.paraphrasedIntent.trim()
+        ? candidate.paraphrasedIntent.trim()
+        : buildParaphrasedIntent(rawText, action);
 
     return {
       action,
@@ -237,6 +269,7 @@ export async function generateActionWithOptionalLLM(
         amountUSD: prov("LLM structured output (validated)", "medium"),
       },
       engine: "llm",
+      paraphrasedIntent: buildParaphrasedIntent(rawText, action),
     };
   } catch {
     return base;
